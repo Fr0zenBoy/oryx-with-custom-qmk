@@ -238,3 +238,29 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
   }
   return true;
 }
+
+
+// Custom QMK here
+
+// Human-like gap between the key press and the click, 29..47 ms.
+static void tap_then_click(uint16_t keycode) {
+    tap_code(keycode);
+    wait_ms(29 + timer_read() % 19);
+    tap_code(KC_MS_BTN1);
+}
+
+// Runs before the Oryx macros, so their generated cases stay untouched.
+bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
+    if (!record->event.pressed) {
+        return true;
+    }
+    switch (keycode) {
+        case ST_MACRO_0:
+            tap_then_click(KC_3);
+            return false;
+        case ST_MACRO_1:
+            tap_then_click(KC_4);
+            return false;
+    }
+    return true;
+}
