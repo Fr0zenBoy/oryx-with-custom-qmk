@@ -242,10 +242,10 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
 // Custom QMK here
 
-// Human-like gap between the key press and the click, 29..47 ms.
+// Human-like gap between the key press and the click, 100..150 ms.
 static void tap_then_click(uint16_t keycode) {
     tap_code(keycode);
-    wait_ms(29 + timer_read() % 19);
+    wait_ms(100 + timer_read() % 51);
     tap_code(KC_MS_BTN1);
 }
 
