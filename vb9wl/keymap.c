@@ -242,11 +242,12 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
 // Custom QMK here
 
-// Human-like gap between the key press and the click, 100..150 ms.
+// Human-like timing: hold the key 60 ms, pause 100..150 ms, hold the click 60 ms.
+// A zero-length press is dropped by programs that poll input once per frame.
 static void tap_then_click(uint16_t keycode) {
-    tap_code(keycode);
+    tap_code_delay(keycode, 60);
     wait_ms(100 + timer_read() % 51);
-    tap_code(KC_MS_BTN1);
+    tap_code_delay(KC_MS_BTN1, 60);
 }
 
 // Runs before the Oryx macros, so their generated cases stay untouched.
