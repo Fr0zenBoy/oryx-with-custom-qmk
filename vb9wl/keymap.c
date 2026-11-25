@@ -240,30 +240,72 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 }
 
 
+
 // Custom QMK here
 
-// Random holds from the measured latencies: key 22..39 ms, click 31..35 ms.
-// The pause is their average, trimmed so the whole sequence stays within 100 ms.
+// Key press, pause, mouse click as a non-blocking state machine: the matrix
+// keeps scanning, so a second macro key pressed mid-sequence is seen at once.
+// Holds come from the measured latencies: key 22..39 ms, click 31..35 ms.
+// The pause is their average, trimmed so one sequence stays within 100 ms.
 // A zero-length press is dropped by programs that poll input once per frame.
-static void tap_then_click(uint16_t keycode) {
+
+#define REPEAT_PERIOD_MS 100  // one sequence per period while the key is held
+
+enum { IDLE, KEY_DOWN, PAUSE, CLICK_DOWN };
+
+static uint8_t  phase;
+static uint16_t phase_end;
+static uint16_t seq_key;
+static uint8_t  pause_ms, click_ms;
+static uint16_t pending_key;   // pressed while a sequence ran, last one wins
+static uint16_t held_keycode;  // last macro key still down, else 0
+static uint16_t repeat_at;
+
+static void start_sequence(uint16_t keycode) {
     uint16_t t = timer_read();
     uint8_t key_ms = 22 + t % 18;
-    uint8_t click_ms = 31 + (t / 18) % 5;
-    uint8_t pause_ms = (key_ms + click_ms) / 2;
+    click_ms = 31 + (t / 18) % 5;
+    pause_ms = (key_ms + click_ms) / 2;
     if (key_ms + pause_ms + click_ms > 100) {
         pause_ms = 100 - key_ms - click_ms;
     }
-    tap_code_delay(keycode, key_ms);
-    wait_ms(pause_ms);
-    tap_code_delay(KC_MS_BTN1, click_ms);
+    seq_key = keycode;
+    register_code(seq_key);
+    phase = KEY_DOWN;
+    phase_end = t + key_ms;
+    repeat_at = t + REPEAT_PERIOD_MS;
 }
 
-// Holding the macro key repeats the sequence, like OS key repeat.
-#define REPEAT_DELAY_MS 250
-#define REPEAT_EVERY_MS 100
-
-static uint16_t held_keycode;  // KC_3 or KC_4 while its macro key is down, else 0
-static uint16_t next_repeat;
+void housekeeping_task_user(void) {
+    uint16_t now = timer_read();
+    if (phase != IDLE && !timer_expired(now, phase_end)) {
+        return;
+    }
+    switch (phase) {
+        case KEY_DOWN:
+            unregister_code(seq_key);
+            phase = PAUSE;
+            phase_end = now + pause_ms;
+            break;
+        case PAUSE:
+            register_code(KC_MS_BTN1);
+            phase = CLICK_DOWN;
+            phase_end = now + click_ms;
+            break;
+        case CLICK_DOWN:
+            unregister_code(KC_MS_BTN1);
+            phase = IDLE;
+            break;
+        case IDLE:
+            if (pending_key) {
+                start_sequence(pending_key);
+                pending_key = 0;
+            } else if (held_keycode && timer_expired(now, repeat_at)) {
+                start_sequence(held_keycode);
+            }
+            break;
+    }
+}
 
 // Runs before the Oryx macros, so their generated cases stay untouched.
 bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
@@ -272,18 +314,14 @@ bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
         return true;
     }
     if (record->event.pressed) {
-        tap_then_click(key);
         held_keycode = key;
-        next_repeat = timer_read() + REPEAT_DELAY_MS;
-    } else {
+        if (phase == IDLE) {
+            start_sequence(key);
+        } else {
+            pending_key = key;
+        }
+    } else if (key == held_keycode) {
         held_keycode = 0;
     }
     return false;
-}
-
-void housekeeping_task_user(void) {
-    if (held_keycode && timer_expired(timer_read(), next_repeat)) {
-        tap_then_click(held_keycode);
-        next_repeat = timer_read() + REPEAT_EVERY_MS;
-    }
 }
