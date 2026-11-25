@@ -242,26 +242,48 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
 // Custom QMK here
 
-// Hold the key 64 ms, pause 30..40 ms, hold the click 26 ms (measured average click).
+// Random holds from the measured latencies: key 22..39 ms, click 31..35 ms.
+// The pause is their average, trimmed so the whole sequence stays within 100 ms.
 // A zero-length press is dropped by programs that poll input once per frame.
 static void tap_then_click(uint16_t keycode) {
-    tap_code_delay(keycode, 64);
-    wait_ms(30 + timer_read() % 11);
-    tap_code_delay(KC_MS_BTN1, 26);
+    uint16_t t = timer_read();
+    uint8_t key_ms = 22 + t % 18;
+    uint8_t click_ms = 31 + (t / 18) % 5;
+    uint8_t pause_ms = (key_ms + click_ms) / 2;
+    if (key_ms + pause_ms + click_ms > 100) {
+        pause_ms = 100 - key_ms - click_ms;
+    }
+    tap_code_delay(keycode, key_ms);
+    wait_ms(pause_ms);
+    tap_code_delay(KC_MS_BTN1, click_ms);
 }
+
+// Holding the macro key repeats the sequence, like OS key repeat.
+#define REPEAT_DELAY_MS 250
+#define REPEAT_EVERY_MS 100
+
+static uint16_t held_keycode;  // KC_3 or KC_4 while its macro key is down, else 0
+static uint16_t next_repeat;
 
 // Runs before the Oryx macros, so their generated cases stay untouched.
 bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
-    if (!record->event.pressed) {
+    uint16_t key = keycode == ST_MACRO_0 ? KC_3 : keycode == ST_MACRO_1 ? KC_4 : 0;
+    if (!key) {
         return true;
     }
-    switch (keycode) {
-        case ST_MACRO_0:
-            tap_then_click(KC_3);
-            return false;
-        case ST_MACRO_1:
-            tap_then_click(KC_4);
-            return false;
+    if (record->event.pressed) {
+        tap_then_click(key);
+        held_keycode = key;
+        next_repeat = timer_read() + REPEAT_DELAY_MS;
+    } else {
+        held_keycode = 0;
     }
-    return true;
+    return false;
+}
+
+void housekeeping_task_user(void) {
+    if (held_keycode && timer_expired(timer_read(), next_repeat)) {
+        tap_then_click(held_keycode);
+        next_repeat = timer_read() + REPEAT_EVERY_MS;
+    }
 }
