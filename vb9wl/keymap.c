@@ -242,12 +242,12 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
 // Custom QMK here
 
-// Hold the key 74 ms, pause 30..47 ms, hold the click 80 ms.
+// Hold the key 74 ms, pause 30..47 ms, hold the click 40 ms.
 // A zero-length press is dropped by programs that poll input once per frame.
 static void tap_then_click(uint16_t keycode) {
     tap_code_delay(keycode, 74);
     wait_ms(30 + timer_read() % 18);
-    tap_code_delay(KC_MS_BTN1, 80);
+    tap_code_delay(KC_MS_BTN1, 40);
 }
 
 // Runs before the Oryx macros, so their generated cases stay untouched.
